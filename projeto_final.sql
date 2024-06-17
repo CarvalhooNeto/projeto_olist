@@ -1,26 +1,36 @@
 -- Qual a categoria que possui o produto com o maior número de dias entre a primeira compra da categoria e a sua data limite de entrega?
-SELECT
-	p.product_category_name,
-	p.product_id,
-	MIN( DATE(oi.shipping_limit_date)),
-	MAX(DATE(o.order_purchase_timestamp)) 
+with tabela as (SELECT 
+	DATE(oi.shipping_limit_date) limit_date,
+	DATE(o.order_purchase_timestamp) start_date,
+	p.product_category_name category_name,
+	DATE(MIN(o.order_purchase_timestamp) OVER (PARTITION BY p.product_category_name)) as primeira_da_categoria
 FROM
-	products p LEFT JOIN order_items oi ON (p.product_id = oi.product_id)
-			   LEFT JOIN  orders o ON (oi.order_id = o.order_id)
-WHERE p.product_category_name IS NOT NULL
-GROUP BY p.product_category_name
-
+	order_items oi LEFT JOIN orders o ON (oi.order_id = o.order_id)
+				   LEFT JOIN products p ON (oi.product_id = p.product_id))
+SELECT 
+	category_name,
+	ROUND(JULIANDAY(limit_date) - JULIANDAY(primeira_da_categoria)) as dias
+FROM
+	tabela
+ORDER BY dias DESC
 -- Qual o código do pedido da categoria “utilidades domésticas” com 1283 dias entre a primeira compra dessa categoria e a data limite de envio do produto?
-SELECT
-	oi.order_id,
-	MIN( DATE(oi.shipping_limit_date)),
-	MAX(DATE(o.order_purchase_timestamp)),
-	p.product_category_name 
+with tabela as (SELECT 
+	oi.order_id order_id,
+	DATE(oi.shipping_limit_date) limit_date,
+	DATE(o.order_purchase_timestamp) start_date,
+	p.product_category_name category_name,
+	DATE(MIN(o.order_purchase_timestamp) OVER (PARTITION BY p.product_category_name)) as primeira_da_categoria
 FROM
-	order_items oi LEFT JOIN orders o ON( oi.order_id = o.order_id)
-				   LEFT JOIN products p ON (oi.product_id  = p.product_id)
-WHERE p.product_category_name = 'utilidades_domesticas'
-GROUP BY oi.order_id 
+	order_items oi LEFT JOIN orders o ON (oi.order_id = o.order_id)
+				   LEFT JOIN products p ON (oi.product_id = p.product_id))
+SELECT
+	order_id,
+	category_name,
+	ROUND(JULIANDAY(limit_date) - JULIANDAY(primeira_da_categoria)) as dias
+FROM
+	tabela
+WHERE category_name = 'utilidades_domesticas'
+ORDER BY dias DESC
 
 -- Qual a categoria com maior soma dos preços de produtos?
 SELECT 
@@ -43,7 +53,17 @@ WHERE P.product_category_name IS NOT NULL
 	AND p.product_category_name = 'agro_industria_e_comercio'
  
 -- Qual a ordem correta das 3 categorias com os produtos mais caros?
-
+SELECT 
+	p.product_id ,
+	p.product_category_name,
+	SUM(oi.price) 
+FROM
+	products p LEFT JOIN order_items oi ON (p.product_id = oi.product_id)
+WHERE
+	p.product_category_name IS NOT NULL 
+GROUP BY p.product_category_name 
+ORDER BY SUM(oi.price) DESC 
+LIMIT 3
  --Qual o valor dos produtos mais caros das categorias: bebes, flores e seguros e serviços, respectivamente
 SELECT
 	p.product_category_name,
@@ -56,27 +76,18 @@ GROUP BY p.product_category_name
 
 -- Quantos pedidos possuem um único comprador, 3 produtos e o pagamento foi dividido em 10 parcelas
 
-WITH CUSTOMERS AS (
-    SELECT
-        COUNT(DISTINCT o.customer_id) AS num_customers,
-        COUNT(o.order_id) AS num_orders,
-        COUNT(DISTINCT oi.product_id) AS num_products,
-        op.payment_installments AS max_installments
-    FROM
-        orders o
-        LEFT JOIN order_items oi ON o.order_id = oi.order_id
-        LEFT JOIN order_payments op ON o.order_id = op.order_id
-   
-    GROUP BY
-        o.customer_id  
-)
-SELECT
-    COUNT(*)
+with aux as (SELECT 
+	DISTINCT o.customer_id,
+	oi.order_item_id,
+	op.payment_installments 
 FROM
-    CUSTOMERS
-WHERE
-	 num_products = 3
-    AND max_installments = 10;
+	order_items oi INNER JOIN order_payments op ON(oi.order_id = op.order_id)
+				   INNER JOIN orders o ON (oi.order_id = o.order_id)
+WHERE op.payment_installments  = 10 AND oi.order_item_id = 3)
+
+SELECT COUNT(*)
+
+FROM aux
    
 -- Quantos pedidos foram parcelados em mais de 10 vezes ?
    
